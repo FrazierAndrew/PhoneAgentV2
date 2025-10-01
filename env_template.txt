@@ -1,0 +1,17 @@
+# Copy this to .env and fill in your API keys
+
+# LiveKit Configuration (for local development)
+LIVEKIT_URL=ws://localhost:7880
+LIVEKIT_API_KEY=devkey
+LIVEKIT_API_SECRET=secret
+
+# AI Provider API Keys
+# Get these from:
+# - OpenAI: https://platform.openai.com/api-keys
+# - Deepgram: https://console.deepgram.com/
+# - Cartesia: https://cartesia.ai/
+
+OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
+DEEPGRAM_API_KEY=YOUR_KEY_HERE
+CARTESIA_API_KEY=YOUR_KEY_HERE
+

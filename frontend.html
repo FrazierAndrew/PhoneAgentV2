@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Intake - Voice AI Agent</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .status {
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .status-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        .status-indicator.disconnected {
+            background: #e74c3c;
+        }
+
+        .status-indicator.connecting {
+            background: #f39c12;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-indicator.connected {
+            background: #2ecc71;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            color: #333;
+            font-weight: 600;
+            vertical-align: middle;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            color: #555;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        input {
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        button.disconnect {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        }
+
+        .info-box {
+            background: #e8f4fd;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+
+        .info-box h3 {
+            color: #2980b9;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .info-box p {
+            color: #555;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .info-box ul {
+            margin-top: 10px;
+            margin-left: 20px;
+        }
+
+        .info-box li {
+            color: #555;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+
+        .error {
+            background: #fee;
+            border-left-color: #e74c3c;
+            color: #c0392b;
+        }
+
+        .transcript {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            background: #f9f9f9;
+            border-radius: 10px;
+            padding: 15px;
+        }
+
+        .transcript-message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .transcript-message.agent {
+            background: #e8f4fd;
+            color: #2980b9;
+        }
+
+        .transcript-message.user {
+            background: #f0e6ff;
+            color: #764ba2;
+            text-align: right;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏥 Patient Intake Agent</h1>
+        <p class="subtitle">Test the voice AI assistant</p>
+
+        <div class="status">
+            <span class="status-indicator disconnected" id="statusIndicator"></span>
+            <span class="status-text" id="statusText">Disconnected</span>
+        </div>
+
+        <div class="controls">
+            <div class="input-group">
+                <label for="roomName">Room Name (optional)</label>
+                <input 
+                    type="text" 
+                    id="roomName" 
+                    placeholder="Leave empty for auto-generated"
+                    value="">
+            </div>
+
+            <div class="input-group">
+                <label for="serverUrl">LiveKit Server URL</label>
+                <input 
+                    type="text" 
+                    id="serverUrl" 
+                    placeholder="wss://your-livekit-cloud.livekit.cloud"
+                    value="wss://agent-pqs22zpw.livekit.cloud">
+            </div>
+
+            <div class="input-group">
+                <label for="tokenServerUrl">Token Server URL</label>
+                <input 
+                    type="text" 
+                    id="tokenServerUrl" 
+                    placeholder="http://localhost:3001"
+                    value="http://localhost:3001">
+            </div>
+
+            <button id="connectBtn" onclick="connect()">
+                🎤 Start Voice Session
+            </button>
+
+            <button id="disconnectBtn" class="disconnect hidden" onclick="disconnect()">
+                ⏹️ End Session
+            </button>
+        </div>
+
+        <div class="info-box">
+            <h3>📋 What the agent will collect:</h3>
+            <ul>
+                <li>Patient name and date of birth</li>
+                <li>Insurance payer name and ID</li>
+                <li>Referral information</li>
+                <li>Chief medical complaint</li>
+                <li>Address (with validation)</li>
+                <li>Contact information</li>
+                <li>Available appointment times</li>
+            </ul>
+        </div>
+
+        <div class="transcript hidden" id="transcript">
+            <h3 style="margin-bottom: 15px; color: #333;">Conversation:</h3>
+            <div id="transcriptContent"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@1.15.13/dist/livekit-client.umd.min.js" onload="console.log('LiveKit script loaded')"></script>
+    <script>
+        let room = null;
+        let localParticipant = null;
+        let livekitLoadAttempts = 0;
+        
+        // Wait for LiveKit library to load
+        function waitForLiveKit() {
+            return new Promise((resolve, reject) => {
+                if (window.LivekitClient) {
+                    console.log('LiveKit already loaded');
+                    resolve();
+                    return;
+                }
+                
+                let attempts = 0;
+                const maxAttempts = 300; // 30 seconds
+                
+                const checkInterval = setInterval(() => {
+                    attempts++;
+                    if (window.LivekitClient) {
+                        clearInterval(checkInterval);
+                        console.log('LiveKit loaded successfully after', attempts * 100, 'ms');
+                        resolve();
+                    } else if (attempts > maxAttempts) {
+                        clearInterval(checkInterval);
+                        reject(new Error('LiveKit library failed to load after 30 seconds. Please check your internet connection and refresh the page.'));
+                    } else if (attempts === 50) {
+                        console.log('Still loading... (5 seconds)');
+                    } else if (attempts === 100) {
+                        console.log('Still loading... (10 seconds)');
+                    } else if (attempts === 150) {
+                        console.log('Still loading... (15 seconds)');
+                    }
+                }, 100);
+            });
+        }
+
+        function updateStatus(status, text) {
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            
+            indicator.className = 'status-indicator ' + status;
+            statusText.textContent = text;
+        }
+
+        function addTranscriptMessage(type, message) {
+            const transcript = document.getElementById('transcript');
+            const content = document.getElementById('transcriptContent');
+            
+            transcript.classList.remove('hidden');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'transcript-message ' + type;
+            messageDiv.textContent = message;
+            
+            content.appendChild(messageDiv);
+            transcript.scrollTop = transcript.scrollHeight;
+        }
+
+        async function connect() {
+            const roomName = document.getElementById('roomName').value || 'patient-intake-' + Math.random().toString(36).substring(7);
+            const serverUrl = document.getElementById('serverUrl').value;
+            const tokenServerUrl = document.getElementById('tokenServerUrl').value;
+
+            try {
+                updateStatus('connecting', 'Loading LiveKit library...');
+                document.getElementById('connectBtn').disabled = true;
+
+                // Wait for LiveKit library to load
+                console.log('Waiting for LiveKit library...');
+                await waitForLiveKit();
+                console.log('LiveKit library ready');
+
+                updateStatus('connecting', 'Library loaded. Connecting...');
+
+                // Create room
+                room = new LivekitClient.Room({
+                    adaptiveStream: true,
+                    dynacast: true,
+                });
+
+                // Set up event listeners
+                room.on(LivekitClient.RoomEvent.Connected, () => {
+                    console.log('Room connected event fired');
+                    updateStatus('connected', 'Connected - Speak with the agent');
+                    document.getElementById('connectBtn').classList.add('hidden');
+                    document.getElementById('disconnectBtn').classList.remove('hidden');
+                    addTranscriptMessage('agent', 'Connected! Waiting for agent to join...');
+                });
+
+                room.on(LivekitClient.RoomEvent.Disconnected, (reason) => {
+                    console.log('Room disconnected:', reason);
+                    updateStatus('disconnected', 'Disconnected');
+                    document.getElementById('connectBtn').classList.remove('hidden');
+                    document.getElementById('connectBtn').disabled = false;
+                    document.getElementById('disconnectBtn').classList.add('hidden');
+                });
+
+                room.on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
+                    console.log('Participant connected:', participant.identity);
+                    addTranscriptMessage('agent', 'AI Agent joined: ' + participant.identity);
+                });
+
+                room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                    console.log('Track subscribed:', track.kind, 'from', participant.identity);
+                    if (track.kind === LivekitClient.Track.Kind.Audio || track.kind === 'audio') {
+                        console.log('Attaching audio track');
+                        const audioElement = track.attach();
+                        audioElement.autoplay = true;
+                        audioElement.volume = 1.0;
+                        document.body.appendChild(audioElement);
+                        console.log('Audio element added to page');
+                        
+                        // Log when audio starts playing
+                        audioElement.onplay = () => console.log('Audio started playing');
+                        audioElement.onerror = (e) => console.error('Audio error:', e);
+                    }
+                });
+
+                // First, create the room with agent metadata
+                console.log('🔷 Step 1: Creating room with agent metadata:', roomName);
+                console.log('🔷 Token server URL:', tokenServerUrl);
+                try {
+                    console.log('🔷 Sending POST to:', tokenServerUrl + '/create-room');
+                    const createRoom = await fetch(tokenServerUrl + '/create-room', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ roomName: roomName })
+                    });
+                    console.log('🔷 Create room response status:', createRoom.status);
+                    const createRoomData = await createRoom.json();
+                    console.log('🔷 Create room response:', createRoomData);
+                    if (createRoom.ok) {
+                        console.log('✅ Room created/verified successfully');
+                    } else {
+                        console.log('❌ Room creation failed:', createRoomData);
+                    }
+                } catch (e) {
+                    console.error('❌ Room creation error:', e);
+                }
+
+                // Get token from your backend
+                console.log('🔷 Step 2: Getting access token...');
+                const token = await getToken(roomName, tokenServerUrl);
+                console.log('✅ Token received');
+
+                // Connect to room with timeout
+                console.log('🔷 Step 3: Connecting to LiveKit room...');
+                console.log('🔷 Server URL:', serverUrl);
+                console.log('🔷 Room name:', roomName);
+                
+                const connectPromise = room.connect(serverUrl, token);
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Connection timeout after 15 seconds')), 15000)
+                );
+                
+                await Promise.race([connectPromise, timeoutPromise]);
+                
+                console.log('Connected successfully!');
+
+                // Publish local audio
+                console.log('Enabling microphone...');
+                await room.localParticipant.setMicrophoneEnabled(true);
+                console.log('Microphone enabled');
+
+            } catch (error) {
+                console.error('Error connecting:', error);
+                console.error('Error details:', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+                updateStatus('disconnected', 'Connection failed');
+                document.getElementById('connectBtn').disabled = false;
+                
+                let errorMsg = 'Failed to connect: ' + error.message;
+                if (error.message.includes('timeout')) {
+                    errorMsg += '\n\nThe connection timed out. The agent may not be running or there may be network issues.';
+                } else if (error.message.includes('token')) {
+                    errorMsg += '\n\nToken server issue. Make sure it\'s running on http://localhost:3001';
+                }
+                
+                alert(errorMsg + '\n\nCheck browser console (F12) for details.');
+            }
+        }
+
+        async function disconnect() {
+            if (room) {
+                await room.disconnect();
+                room = null;
+            }
+        }
+
+        async function getToken(roomName, tokenServerUrl) {
+            // Get token from the token server
+            console.log('🔷 getToken: Requesting token for room:', roomName);
+            console.log('🔷 getToken: Token server URL:', tokenServerUrl);
+            
+            try {
+                console.log('🔷 getToken: Sending POST to:', tokenServerUrl + '/token');
+                const response = await fetch(tokenServerUrl + '/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        roomName: roomName,
+                        identity: 'patient-' + Math.random().toString(36).substring(7),
+                    }),
+                });
+                const data = await response.json();
+                return data.token;
+            } catch (error) {
+                throw new Error('Token server not available at ' + tokenServerUrl + '. Make sure it is running.');
+            }
+        }
+
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (room) {
+                room.disconnect();
+            }
+        });
+    </script>
+</body>
+</html>
+
