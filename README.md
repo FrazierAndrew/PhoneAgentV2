@@ -94,10 +94,10 @@ This starts the token server on `http://localhost:3000`.
 In another terminal:
 
 ```bash
-python agent.py dev
+python agent_direct.py
 ```
 
-This starts the agent worker which will listen for new rooms.
+This starts the direct agent which will listen for room join requests on port 5001.
 
 ### 6. Open the Frontend
 
@@ -129,7 +129,7 @@ The agent will guide you through the patient intake process:
 
 ```
 assort_4/
-├── agent.py              # Main voice AI agent
+├── agent_direct.py       # Main voice AI agent (direct connection)
 ├── token_server.py       # Authentication token server
 ├── frontend.html         # Web-based testing interface
 ├── requirements.txt      # Python dependencies
@@ -193,19 +193,19 @@ session = AgentSession(
 
 ### Modify Agent Instructions
 
-Update the `instructions` parameter in `agent.py`:
+Update the `instructions` parameter in `agent_direct.py`:
 
 ```python
 agent = Agent(
     instructions="Your custom instructions here...",
-    fnc_ctx=intake_tools,
+    tools=tools,
 )
 ```
 
 ### Add More Data Fields
 
-1. Add fields to `patient_info` dict in `PatientIntakeTools.__init__`
-2. Create a new `@llm.ai_callable` method
+1. Add fields to `patient_info` dict in `agent_direct.py`
+2. Create a new `@llm.function_tool` method
 3. Update agent instructions to collect the new field
 
 ## Deployment
@@ -257,7 +257,7 @@ See: https://docs.livekit.io/agents/telephony/
 ### Agent won't connect
 - Ensure LiveKit server is running
 - Check that API keys in `.env` are correct
-- Verify agent.py is running with `dev` flag
+- Verify agent_direct.py is running and listening on port 5001
 
 ### No audio
 - Check microphone permissions in browser
