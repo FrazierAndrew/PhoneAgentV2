@@ -1,6 +1,6 @@
-# Patient Intake Voice AI Agent
+# Phone-based Patient Intake Voice AI Agent
 
-A voice AI agent built with LiveKit Agents framework that collects patient information for medical appointment scheduling.
+A voice AI agent that answers phone calls and collects patient information for medical appointment scheduling using Twilio and LiveKit.
 
 ## Features
 
@@ -27,10 +27,12 @@ A voice AI agent built with LiveKit Agents framework that collects patient infor
 
 1. **Python 3.9+**
 2. **LiveKit Server** (local or cloud)
-3. **API Keys**:
+3. **Twilio Account** with phone number
+4. **API Keys**:
    - OpenAI API key
    - Deepgram API key  
    - Cartesia API key
+   - Twilio Account SID and Auth Token
 
 ## Quick Start
 
@@ -59,6 +61,10 @@ LIVEKIT_API_SECRET=secret
 OPENAI_API_KEY=your_openai_api_key_here
 DEEPGRAM_API_KEY=your_deepgram_api_key_here
 CARTESIA_API_KEY=your_cartesia_api_key_here
+
+# Twilio Configuration
+TWILIO_ACCOUNT_SID=your_twilio_account_sid_here
+TWILIO_AUTH_TOKEN=your_twilio_auth_token_here
 ```
 
 ### 3. Start LiveKit Server (Local Development)
@@ -79,41 +85,29 @@ The dev server will run on `ws://localhost:7880` with default credentials:
 - API Key: `devkey`
 - API Secret: `secret`
 
-### 4. Start the Token Server
+### 4. Configure Twilio Webhook
 
-In a new terminal:
+1. Go to your [Twilio Console](https://console.twilio.com/)
+2. Navigate to Phone Numbers → Manage → Active Numbers
+3. Click on your phone number: **(350) 500-5217**
+4. Set the webhook URL to: `https://your-domain.com/webhook/voice`
+5. Set HTTP method to: **POST**
 
-```bash
-python token_server.py
-```
-
-This starts the token server on `http://localhost:3000`.
-
-### 5. Start the Voice Agent
-
-In another terminal:
+### 5. Start the Phone Agent
 
 ```bash
-python agent_direct.py
+python phone_agent.py
+# OR
+./start_phone_agent.sh
 ```
 
-This starts the direct agent which will listen for room join requests on port 5001.
+This starts the phone agent server on `http://localhost:8000`.
 
-### 6. Open the Frontend
+### 6. Test the Agent
 
-Open `frontend.html` in your web browser (or use a simple HTTP server):
-
-```bash
-# Using Python's built-in server
-python -m http.server 8080
-# Then open http://localhost:8080/frontend.html
-```
-
-### 7. Test the Agent
-
-1. Click "Start Voice Session" in the frontend
-2. Allow microphone access when prompted
-3. Start speaking with the agent!
+1. Call your Twilio number: **(350) 500-5217**
+2. The AI agent will answer and guide you through patient intake
+3. Speak naturally - the agent will collect all required information
 
 The agent will guide you through the patient intake process:
 1. Name
@@ -129,9 +123,9 @@ The agent will guide you through the patient intake process:
 
 ```
 assort_4/
-├── agent_direct.py       # Main voice AI agent (direct connection)
-├── token_server.py       # Authentication token server
-├── frontend.html         # Web-based testing interface
+├── phone_agent.py        # Phone-based voice AI agent
+├── agent_direct.py       # Direct connection agent (legacy)
+├── token_server.py       # Authentication token server (legacy)
 ├── requirements.txt      # Python dependencies
 ├── .env                  # Environment variables (create this)
 └── README.md            # This file
