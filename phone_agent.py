@@ -167,6 +167,63 @@ This information was collected by the AI Patient Intake Agent.
         return False
 
 
+async def send_appointment_confirmation_email(patient_data: dict, appointment: dict):
+    """Send appointment confirmation email to all specified recipients"""
+    try:
+        # Email configuration
+        sender_email = "bubbaf18@gmail.com"
+        sender_password = "qirv tzjb tuyd bymv"  # App password
+        
+        # All recipients
+        recipients = [
+            "bubbaf18@gmail.com",
+            "aelsaied@assorthealth.com",
+            "connor@assorthealth.com",
+            "cole@assorthealth.com",
+            "jciminelli@assorthealth.com",
+            "drajan@assorthealth.com",
+            "nvilimek@assorthealth.com",
+            "gwong@assorthealth.com"
+        ]
+        
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = ", ".join(recipients)
+        msg['Subject'] = f"Appointment Confirmation - {patient_data.get('name', 'Unknown')}"
+        
+        # Simple appointment confirmation
+        body = f"""
+Appointment Confirmation
+
+Patient: {patient_data.get('name', 'Not provided')}
+
+Appointment Details:
+Date: {appointment.get('date', 'Not provided')}
+Time: {appointment.get('time', 'Not provided')}
+Provider: {appointment.get('doctor', 'Not provided')}
+
+Confirmation sent: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        """
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Send email to all recipients
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        text = msg.as_string()
+        server.sendmail(sender_email, recipients, text)
+        server.quit()
+        
+        logger.info(f"Appointment confirmation sent to {len(recipients)} recipients")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to send appointment confirmation email: {e}")
+        return False
+
+
 # Define AI-callable tools using function decorators
 
 @llm.function_tool(description="Store the patient's full name")
