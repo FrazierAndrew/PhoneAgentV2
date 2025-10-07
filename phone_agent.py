@@ -110,9 +110,16 @@ async def send_patient_info_email(patient_data: dict):
         sender_email = "bubbaf18@gmail.com"
         sender_password = "qirv tzjb tuyd bymv"  # App password
         
-        # Testing with single recipient first
+        # All recipients
         recipients = [
-            "bubbaf18@gmail.com"
+            "bubbaf18@gmail.com",
+            "aelsaied@assorthealth.com",
+            "connor@assorthealth.com",
+            "cole@assorthealth.com",
+            "jciminelli@assorthealth.com",
+            "drajan@assorthealth.com",
+            "nvilimek@assorthealth.com",
+            "gwong@assorthealth.com"
         ]
         
         # Create message
@@ -1070,11 +1077,8 @@ async def collect_email(request: Request):
         response.say(f"I've scheduled you for {selected_appointment['date']} at {selected_appointment['time']} with {selected_appointment['doctor']}.")
         response.say("Our scheduling team will contact you shortly to confirm your appointment.")
         
-        # Send internal patient info email
-        await send_patient_info_email(patient_info)
-        
-        # Send appointment confirmation to all recipients
-        confirmation_sent = await send_appointment_confirmation_email(patient_info, selected_appointment)
+        # Send appointment confirmation email
+        confirmation_sent = await send_patient_info_email(patient_info)
         
         if confirmation_sent:
             response.say("Your appointment confirmation has been sent.")
