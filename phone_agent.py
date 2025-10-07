@@ -15,7 +15,7 @@ from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 import aiohttp
 from twilio.rest import Client
-from twilio.twiml import VoiceResponse
+from twilio.twiml.voice_response import VoiceResponse
 
 # Load environment variables
 load_dotenv()
@@ -159,11 +159,11 @@ This information was collected by the AI Patient Intake Agent.
         server.sendmail(sender_email, recipient_email, text)
         server.quit()
         
-        logger.info(f"✅ Patient information sent to {recipient_email}")
+        logger.info(f" Patient information sent to {recipient_email}")
         return True
         
     except Exception as e:
-        logger.error(f"❌ Failed to send email: {e}")
+        logger.error(f" Failed to send email: {e}")
         return False
 
 
@@ -273,9 +273,9 @@ async def get_available_appointments():
     # Send patient information via email
     email_sent = await send_patient_info_email(patient_info)
     if email_sent:
-        appointment_text += "\n\n✅ Your information has been sent to our scheduling team. They will contact you shortly to confirm your appointment."
+        appointment_text += "\n\n Your information has been sent to our scheduling team. They will contact you shortly to confirm your appointment."
     else:
-        appointment_text += "\n\n⚠️ There was an issue sending your information. Please call our office directly to complete your appointment booking."
+        appointment_text += "\n\n There was an issue sending your information. Please call our office directly to complete your appointment booking."
     
     return appointment_text
 
@@ -288,7 +288,7 @@ async def get_patient_summary():
 
 async def run_agent_in_room(room_name: str, caller_phone: str = None):
     """Directly connect agent to a specific room"""
-    logger.info(f"🚀 Agent directly connecting to room: {room_name}")
+    logger.info(f" Agent directly connecting to room: {room_name}")
     
     # Store caller phone if provided
     if caller_phone:
@@ -316,7 +316,7 @@ async def run_agent_in_room(room_name: str, caller_phone: str = None):
     ))
     
     await room.connect(livekit_url, token.to_jwt())
-    logger.info(f"✅ Agent connected to room: {room_name}")
+    logger.info(f" Agent connected to room: {room_name}")
     
     # Collect all tools
     tools = [
@@ -417,32 +417,728 @@ import uvicorn
 
 app = FastAPI()
 
-@app.post("/webhook/voice")
+@app.post("/voice/incoming")
 async def handle_voice_webhook(request: Request):
     """Handle incoming Twilio voice calls"""
-    form_data = await request.form()
-    caller_phone = form_data.get("From")
-    call_sid = form_data.get("CallSid")
-    
-    logger.info(f"📞 Incoming call from {caller_phone}, Call SID: {call_sid}")
-    
-    # Create a unique room name for this call
-    room_name = f"phone-call-{call_sid}"
-    
-    # Start agent in background
-    asyncio.create_task(run_agent_in_room(room_name, caller_phone))
-    
-    # Return TwiML to connect to LiveKit
+    try:
+        form_data = await request.form()
+        caller_phone = form_data.get("From")
+        call_sid = form_data.get("CallSid")
+        
+        logger.info(f" Incoming call from {caller_phone}, Call SID: {call_sid}")
+        
+        # Return TwiML response to start patient intake
+        response = VoiceResponse()
+        response.say("Hello! Thank you for calling our patient intake system.")
+        
+        # Use gather to collect voice input for name
+        gather = response.gather(
+            input="speech",
+            action="/voice/collect-name",
+            method="POST",
+            speech_timeout="auto",
+            timeout=10
+        )
+        gather.say("May I have your full name, please?")
+        
+        # Fallback if no input - redirect to retry
+        response.redirect("/voice/retry-name", method="POST")
+        
+        return PlainTextResponse(str(response), media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error handling voice webhook: {e}")
+        response = VoiceResponse()
+        response.say("I'm sorry, there was an error. Please try again later.")
+        return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/collect-name")
+async def collect_name(request: Request):
+    """Collect patient name and continue intake process"""
+    try:
+        form_data = await request.form()
+        name = form_data.get("SpeechResult", "").strip()
+        caller_phone = form_data.get("From")
+        
+        logger.info(f"Patient {caller_phone} provided name: {name}")
+        
+        # Store the name
+        patient_info["name"] = name
+        patient_info["phone"] = caller_phone
+        
+        response = VoiceResponse()
+        
+        if name:
+            response.say(f"Thank you, {name}.")
+            
+            # Collect date of birth
+            gather = response.gather(
+                input="speech",
+                action="/voice/collect-dob",
+                method="POST",
+                speech_timeout="auto",
+                timeout=10
+            )
+            gather.say("What is your date of birth? Please say the month, day, and year.")
+            
+            # Fallback - redirect to retry
+            response.redirect("/voice/retry-dob", method="POST")
+        else:
+            # Redirect to retry
+            response.redirect("/voice/retry-name", method="POST")
+        
+        return PlainTextResponse(str(response), media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error collecting name: {e}")
+        response = VoiceResponse()
+        response.say("I'm sorry, there was an error. Please try again later.")
+        return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/retry-name")
+async def retry_name(request: Request):
+    """Retry collecting patient name"""
     response = VoiceResponse()
+    response.say("I'm sorry, I didn't catch that.")
     
-    # Connect to LiveKit room
-    response.say("Please hold while I connect you to our patient intake system.")
+    gather = response.gather(
+        input="speech",
+        action="/voice/collect-name",
+        method="POST",
+        speech_timeout="auto",
+        timeout=10
+    )
+    gather.say("Could you please tell me your full name one more time?")
     
-    # Use Twilio's LiveKit integration
-    # Note: This requires Twilio's LiveKit connector
-    response.connect().room(room_name)
-    
+    # Final fallback - end call
+    response.say("I'm having trouble hearing you. Please try calling back when you have a better connection. Goodbye.")
     return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/collect-dob")
+async def collect_dob(request: Request):
+    """Collect date of birth and continue intake process"""
+    try:
+        form_data = await request.form()
+        dob = form_data.get("SpeechResult", "").strip()
+        
+        logger.info(f"Patient provided DOB: {dob}")
+        
+        # Store the DOB
+        patient_info["date_of_birth"] = dob
+        
+        response = VoiceResponse()
+        
+        if dob:
+            response.say(f"Thank you. I have your date of birth as {dob}.")
+            
+            # Collect insurance
+            gather = response.gather(
+                input="speech",
+                action="/voice/collect-insurance",
+                method="POST",
+                speech_timeout="auto",
+                timeout=10
+            )
+            gather.say("What insurance company do you have?")
+            
+            # Fallback - redirect to retry
+            response.redirect("/voice/retry-insurance", method="POST")
+        else:
+            # Redirect to retry
+            response.redirect("/voice/retry-dob", method="POST")
+        
+        return PlainTextResponse(str(response), media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error collecting DOB: {e}")
+        response = VoiceResponse()
+        response.say("I'm sorry, there was an error. Please try again later.")
+        return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/retry-dob")
+async def retry_dob(request: Request):
+    """Retry collecting date of birth"""
+    response = VoiceResponse()
+    response.say("I'm sorry, I didn't hear your date of birth.")
+    
+    gather = response.gather(
+        input="speech",
+        action="/voice/collect-dob",
+        method="POST",
+        speech_timeout="auto",
+        timeout=10
+    )
+    gather.say("Please tell me your date of birth again. Say the month, day, and year.")
+    
+    # Final fallback - end call
+    response.say("I'm having trouble hearing you. Please try calling back when you have a better connection. Goodbye.")
+    return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/collect-insurance")
+async def collect_insurance(request: Request):
+    """Collect insurance payer name"""
+    try:
+        form_data = await request.form()
+        insurance = form_data.get("SpeechResult", "").strip()
+        
+        logger.info(f"Patient provided insurance: {insurance}")
+        
+        # Store the insurance payer
+        patient_info["insurance_payer"] = insurance
+        
+        response = VoiceResponse()
+        
+        if insurance:
+            response.say(f"Thank you. I have your insurance as {insurance}.")
+            
+            # Collect insurance ID
+            gather = response.gather(
+                input="speech dtmf",
+                action="/voice/collect-insurance-id",
+                method="POST",
+                speech_timeout="auto",
+                timeout=10
+            )
+            gather.say("What is your insurance ID number?")
+            
+            # Fallback - redirect to retry
+            response.redirect("/voice/retry-insurance-id", method="POST")
+        else:
+            # Redirect to retry
+            response.redirect("/voice/retry-insurance", method="POST")
+        
+        return PlainTextResponse(str(response), media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error collecting insurance: {e}")
+        response = VoiceResponse()
+        response.say("I'm sorry, there was an error. Please try again later.")
+        return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/retry-insurance")
+async def retry_insurance(request: Request):
+    """Retry collecting insurance"""
+    response = VoiceResponse()
+    response.say("I'm sorry, I didn't catch your insurance company name.")
+    
+    gather = response.gather(
+        input="speech",
+        action="/voice/collect-insurance",
+        method="POST",
+        speech_timeout="auto",
+        timeout=10
+    )
+    gather.say("Please tell me your insurance company name again.")
+    
+    # Final fallback - end call
+    response.say("I'm having trouble hearing you. Please try calling back when you have a better connection. Goodbye.")
+    return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/collect-insurance-id")
+async def collect_insurance_id(request: Request):
+    """Collect insurance ID number"""
+    try:
+        form_data = await request.form()
+        insurance_id = form_data.get("SpeechResult") or form_data.get("Digits", "")
+        insurance_id = insurance_id.strip()
+        
+        logger.info(f"Patient provided insurance ID: {insurance_id}")
+        
+        # Store the insurance ID
+        patient_info["insurance_id"] = insurance_id
+        
+        response = VoiceResponse()
+        
+        if insurance_id:
+            response.say(f"Thank you. I have your insurance ID.")
+            
+            # Ask about referral
+            gather = response.gather(
+                input="speech",
+                action="/voice/collect-referral",
+                method="POST",
+                speech_timeout="auto",
+                timeout=10
+            )
+            gather.say("Do you have a referral from another physician?")
+            
+            # Fallback - redirect to retry
+            response.redirect("/voice/retry-referral", method="POST")
+        else:
+            # Redirect to retry
+            response.redirect("/voice/retry-insurance-id", method="POST")
+        
+        return PlainTextResponse(str(response), media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error collecting insurance ID: {e}")
+        response = VoiceResponse()
+        response.say("I'm sorry, there was an error. Please try again later.")
+        return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/retry-insurance-id")
+async def retry_insurance_id(request: Request):
+    """Retry collecting insurance ID"""
+    response = VoiceResponse()
+    response.say("I'm sorry, I didn't catch your insurance ID number.")
+    
+    gather = response.gather(
+        input="speech dtmf",
+        action="/voice/collect-insurance-id",
+        method="POST",
+        speech_timeout="auto",
+        timeout=10
+    )
+    gather.say("Please tell me your insurance ID number again.")
+    
+    # Final fallback - end call
+    response.say("I'm having trouble hearing you. Please try calling back when you have a better connection. Goodbye.")
+    return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/collect-referral")
+async def collect_referral(request: Request):
+    """Collect referral information"""
+    try:
+        form_data = await request.form()
+        referral_response = form_data.get("SpeechResult", "").strip().lower()
+        
+        logger.info(f"Patient referral response: {referral_response}")
+        
+        response = VoiceResponse()
+        
+        if referral_response:
+            # Check if they said yes/no
+            has_referral = any(word in referral_response for word in ["yes", "yeah", "yep", "have", "got"])
+            
+            if has_referral:
+                patient_info["has_referral"] = True
+                response.say("Great.")
+                
+                # Ask for physician name
+                gather = response.gather(
+                    input="speech",
+                    action="/voice/collect-physician",
+                    method="POST",
+                    speech_timeout="auto",
+                    timeout=10
+                )
+                gather.say("Which physician referred you?")
+                
+                response.redirect("/voice/retry-physician", method="POST")
+            else:
+                patient_info["has_referral"] = False
+                patient_info["referral_physician"] = ""
+                response.say("Okay, no problem.")
+                
+                # Move to chief complaint
+                gather = response.gather(
+                    input="speech",
+                    action="/voice/collect-complaint",
+                    method="POST",
+                    speech_timeout="auto",
+                    timeout=15
+                )
+                gather.say("What is the main reason for your visit today?")
+                
+                response.redirect("/voice/retry-complaint", method="POST")
+        else:
+            response.redirect("/voice/retry-referral", method="POST")
+        
+        return PlainTextResponse(str(response), media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error collecting referral: {e}")
+        response = VoiceResponse()
+        response.say("I'm sorry, there was an error. Please try again later.")
+        return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/retry-referral")
+async def retry_referral(request: Request):
+    """Retry collecting referral"""
+    response = VoiceResponse()
+    response.say("I'm sorry, I didn't catch that.")
+    
+    gather = response.gather(
+        input="speech",
+        action="/voice/collect-referral",
+        method="POST",
+        speech_timeout="auto",
+        timeout=10
+    )
+    gather.say("Do you have a referral from another physician? Please say yes or no.")
+    
+    # Final fallback - end call
+    response.say("I'm having trouble hearing you. Please try calling back when you have a better connection. Goodbye.")
+    return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/collect-physician")
+async def collect_physician(request: Request):
+    """Collect referring physician name"""
+    try:
+        form_data = await request.form()
+        physician = form_data.get("SpeechResult", "").strip()
+        
+        logger.info(f"Patient provided physician: {physician}")
+        
+        # Store the physician
+        patient_info["referral_physician"] = physician
+        
+        response = VoiceResponse()
+        
+        if physician:
+            response.say(f"Thank you. I have the referral from Doctor {physician}.")
+            
+            # Move to chief complaint
+            gather = response.gather(
+                input="speech",
+                action="/voice/collect-complaint",
+                method="POST",
+                speech_timeout="auto",
+                timeout=15
+            )
+            gather.say("What is the main reason for your visit today?")
+            
+            response.redirect("/voice/retry-complaint", method="POST")
+        else:
+            response.redirect("/voice/retry-physician", method="POST")
+        
+        return PlainTextResponse(str(response), media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error collecting physician: {e}")
+        response = VoiceResponse()
+        response.say("I'm sorry, there was an error. Please try again later.")
+        return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/retry-physician")
+async def retry_physician(request: Request):
+    """Retry collecting physician"""
+    response = VoiceResponse()
+    response.say("I'm sorry, I didn't catch the physician's name.")
+    
+    gather = response.gather(
+        input="speech",
+        action="/voice/collect-physician",
+        method="POST",
+        speech_timeout="auto",
+        timeout=10
+    )
+    gather.say("Which physician referred you? Please tell me their name.")
+    
+    # Final fallback - end call
+    response.say("I'm having trouble hearing you. Please try calling back when you have a better connection. Goodbye.")
+    return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/collect-complaint")
+async def collect_complaint(request: Request):
+    """Collect chief complaint"""
+    try:
+        form_data = await request.form()
+        complaint = form_data.get("SpeechResult", "").strip()
+        
+        logger.info(f"Patient provided complaint: {complaint}")
+        
+        response = VoiceResponse()
+        
+        if complaint:
+            # Store the complaint
+            patient_info["chief_complaint"] = complaint
+            
+            response.say(f"Thank you. I have your reason for the visit as {complaint}.")
+            
+            # Collect address
+            gather = response.gather(
+                input="speech",
+                action="/voice/collect-address",
+                method="POST",
+                speech_timeout="auto",
+                timeout=15
+            )
+            gather.say("What is your complete mailing address? Please include street, city, state, and ZIP code.")
+            
+            response.redirect("/voice/retry-address", method="POST")
+        else:
+            # Redirect to retry
+            response.redirect("/voice/retry-complaint", method="POST")
+        
+        return PlainTextResponse(str(response), media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error collecting complaint: {e}")
+        response = VoiceResponse()
+        response.say("I'm sorry, there was an error. Please try again later.")
+        return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/retry-complaint")
+async def retry_complaint(request: Request):
+    """Retry collecting chief complaint"""
+    response = VoiceResponse()
+    response.say("I'm sorry, I didn't catch that.")
+    
+    gather = response.gather(
+        input="speech",
+        action="/voice/collect-complaint",
+        method="POST",
+        speech_timeout="auto",
+        timeout=15
+    )
+    gather.say("Please tell me the main reason for your visit one more time.")
+    
+    # Final fallback - end call
+    response.say("I'm having trouble hearing you. Please try calling back when you have a better connection. Goodbye.")
+    return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/collect-address")
+async def collect_address(request: Request):
+    """Collect and validate patient address"""
+    try:
+        form_data = await request.form()
+        address = form_data.get("SpeechResult", "").strip()
+        
+        logger.info(f"Patient provided address: {address}")
+        
+        response = VoiceResponse()
+        
+        if address:
+            # Validate the address
+            validation_result = await validate_address(address)
+            patient_info["address"] = address
+            patient_info["address_valid"] = validation_result["valid"]
+            
+            if validation_result["valid"]:
+                response.say("Thank you. I have your address.")
+                
+                # Collect phone number
+                gather = response.gather(
+                    input="speech dtmf",
+                    action="/voice/collect-contact",
+                    method="POST",
+                    speech_timeout="auto",
+                    timeout=10
+                )
+                gather.say("What is the best phone number to reach you?")
+                
+                response.redirect("/voice/retry-contact", method="POST")
+            else:
+                # Address validation failed
+                response.say(f"I'm sorry, but {validation_result['message']}")
+                response.say("Let me ask for your address again.")
+                
+                gather = response.gather(
+                    input="speech",
+                    action="/voice/collect-address",
+                    method="POST",
+                    speech_timeout="auto",
+                    timeout=15
+                )
+                gather.say("Please provide your complete mailing address including street number, city, state, and ZIP code.")
+                
+                response.redirect("/voice/retry-address", method="POST")
+        else:
+            response.redirect("/voice/retry-address", method="POST")
+        
+        return PlainTextResponse(str(response), media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error collecting address: {e}")
+        response = VoiceResponse()
+        response.say("I'm sorry, there was an error. Please try again later.")
+        return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/retry-address")
+async def retry_address(request: Request):
+    """Retry collecting address"""
+    response = VoiceResponse()
+    response.say("I'm sorry, I didn't catch your complete address.")
+    
+    gather = response.gather(
+        input="speech",
+        action="/voice/collect-address",
+        method="POST",
+        speech_timeout="auto",
+        timeout=15
+    )
+    gather.say("Please tell me your mailing address again, including street, city, state, and ZIP code.")
+    
+    # Final fallback - end call
+    response.say("I'm having trouble hearing you. Please try calling back when you have a better connection. Goodbye.")
+    return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/collect-contact")
+async def collect_contact(request: Request):
+    """Collect contact phone number"""
+    try:
+        form_data = await request.form()
+        phone = form_data.get("SpeechResult") or form_data.get("Digits", "")
+        phone = phone.strip()
+        caller_phone = form_data.get("From")
+        
+        logger.info(f"Patient provided contact phone: {phone}")
+        
+        response = VoiceResponse()
+        
+        if phone:
+            # Store phone (or use caller ID if not provided)
+            patient_info["phone"] = phone if phone else caller_phone
+            
+            response.say("Thank you.")
+            
+            # Ask for email
+            gather = response.gather(
+                input="speech",
+                action="/voice/collect-email",
+                method="POST",
+                speech_timeout="auto",
+                timeout=10
+            )
+            gather.say("Would you like to provide an email address? Say your email or say no.")
+            
+            response.redirect("/voice/retry-email", method="POST")
+        else:
+            response.redirect("/voice/retry-contact", method="POST")
+        
+        return PlainTextResponse(str(response), media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error collecting contact: {e}")
+        response = VoiceResponse()
+        response.say("I'm sorry, there was an error. Please try again later.")
+        return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/retry-contact")
+async def retry_contact(request: Request):
+    """Retry collecting contact phone"""
+    response = VoiceResponse()
+    response.say("I'm sorry, I didn't catch your phone number.")
+    
+    gather = response.gather(
+        input="speech dtmf",
+        action="/voice/collect-contact",
+        method="POST",
+        speech_timeout="auto",
+        timeout=10
+    )
+    gather.say("Please tell me your phone number again.")
+    
+    # Final fallback - end call
+    response.say("I'm having trouble hearing you. Please try calling back when you have a better connection. Goodbye.")
+    return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/collect-email")
+async def collect_email(request: Request):
+    """Collect email address (optional)"""
+    try:
+        form_data = await request.form()
+        email_response = form_data.get("SpeechResult", "").strip().lower()
+        
+        logger.info(f"Patient email response: {email_response}")
+        
+        response = VoiceResponse()
+        
+        # Check if they declined
+        if any(word in email_response for word in ["no", "nope", "don't", "skip"]):
+            patient_info["email"] = ""
+            response.say("No problem.")
+        elif "@" in email_response or "at" in email_response:
+            # They provided an email (roughly)
+            patient_info["email"] = email_response
+            response.say("Thank you. I have your email.")
+        else:
+            patient_info["email"] = email_response
+            response.say("Got it.")
+        
+        # Now show appointments and complete
+        appointments = await generate_appointments()
+        patient_info["stage"] = "complete"
+        
+        response.say("Great! Let me show you our available appointments.")
+        
+        appointment_text = "We have the following times available: "
+        for i, apt in enumerate(appointments, 1):
+            appointment_text += f"Option {i}: {apt['date']} at {apt['time']} with {apt['doctor']}. "
+        
+        response.say(appointment_text)
+        
+        # Select the first appointment as default
+        selected_appointment = appointments[0]
+        patient_info["appointment"] = selected_appointment
+        
+        response.say(f"I've scheduled you for {selected_appointment['date']} at {selected_appointment['time']} with {selected_appointment['doctor']}.")
+        response.say("Our scheduling team will contact you shortly to confirm your appointment.")
+        
+        # Send internal patient info email
+        await send_patient_info_email(patient_info)
+        
+        # Send appointment confirmation to all recipients
+        confirmation_sent = await send_appointment_confirmation_email(patient_info, selected_appointment)
+        
+        if confirmation_sent:
+            response.say("Your appointment confirmation has been sent.")
+        
+        response.say("Thank you for calling. We look forward to seeing you. Goodbye.")
+        
+        return PlainTextResponse(str(response), media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error collecting email: {e}")
+        response = VoiceResponse()
+        response.say("I'm sorry, there was an error. Please try again later.")
+        return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/voice/retry-email")
+async def retry_email(request: Request):
+    """Retry collecting email"""
+    response = VoiceResponse()
+    response.say("I'm sorry, I didn't catch that.")
+    
+    gather = response.gather(
+        input="speech",
+        action="/voice/collect-email",
+        method="POST",
+        speech_timeout="auto",
+        timeout=10
+    )
+    gather.say("Would you like to provide an email address? Say your email or say no.")
+    
+    # Final fallback - skip email and go to appointments
+    response.redirect("/voice/collect-email", method="POST")
+    return PlainTextResponse(str(response), media_type="application/xml")
+
+
+@app.post("/webhook/voice")
+async def handle_webhook_voice(request: Request):
+    """Handle incoming calls from old webhook path - redirect to /voice/incoming"""
+    logger.info(" Call received at /webhook/voice - redirecting to /voice/incoming handler")
+    return await handle_voice_webhook(request)
+
+
+@app.post("/voice")
+async def handle_voice_root(request: Request):
+    """Handle incoming calls from /voice path - redirect to /voice/incoming"""
+    logger.info(" Call received at /voice - redirecting to /voice/incoming handler")
+    return await handle_voice_webhook(request)
+
+
 
 
 @app.post("/webhook/status")
@@ -452,7 +1148,7 @@ async def handle_status_webhook(request: Request):
     call_sid = form_data.get("CallSid")
     call_status = form_data.get("CallStatus")
     
-    logger.info(f"📊 Call {call_sid} status: {call_status}")
+    logger.info(f" Call {call_sid} status: {call_status}")
     
     return {"status": "ok"}
 
@@ -464,9 +1160,9 @@ async def health():
 
 
 if __name__ == "__main__":
-    print(f"🏥 Phone-based Patient Intake Agent")
-    print(f"📞 Twilio Number: {TWILIO_PHONE_NUMBER}")
-    print(f"🌐 Webhook URL: https://your-domain.com/webhook/voice")
-    print(f"🚀 Starting server on port 8000...")
+    print(f" Phone-based Patient Intake Agent")
+    print(f" Twilio Number: {TWILIO_PHONE_NUMBER}")
+    print(f" Webhook URL: https://your-domain.com/webhook/voice")
+    print(f" Starting server on port 8000...")
     
     uvicorn.run(app, host="0.0.0.0", port=8000)
