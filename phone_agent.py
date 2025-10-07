@@ -104,70 +104,6 @@ async def generate_appointments() -> list:
 
 
 async def send_patient_info_email(patient_data: dict):
-    """Send collected patient information via email"""
-    try:
-        # Email configuration
-        sender_email = "bubbaf18@gmail.com"
-        sender_password = "qirv tzjb tuyd bymv"  # App password
-        recipient_email = "a2drewfrazier@gmail.com"
-        
-        # Create message
-        msg = MIMEMultipart()
-        msg['From'] = sender_email
-        msg['To'] = recipient_email
-        msg['Subject'] = f"New Patient Intake - {patient_data.get('name', 'Unknown')}"
-        
-        # Format patient data
-        body = f"""
-New Patient Intake Information
-=============================
-
-Patient Details:
-- Name: {patient_data.get('name', 'Not provided')}
-- Date of Birth: {patient_data.get('date_of_birth', 'Not provided')}
-- Phone: {patient_data.get('phone', 'Not provided')}
-- Email: {patient_data.get('email', 'Not provided')}
-
-Insurance Information:
-- Payer: {patient_data.get('insurance_payer', 'Not provided')}
-- ID: {patient_data.get('insurance_id', 'Not provided')}
-
-Referral Information:
-- Has Referral: {patient_data.get('has_referral', 'Not provided')}
-- Referring Physician: {patient_data.get('referral_physician', 'Not provided')}
-
-Medical Information:
-- Chief Complaint: {patient_data.get('chief_complaint', 'Not provided')}
-
-Address Information:
-- Address: {patient_data.get('address', 'Not provided')}
-- Address Validated: {patient_data.get('address_validated', 'Not provided')}
-
-Intake completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
----
-This information was collected by the AI Patient Intake Agent.
-        """
-        
-        msg.attach(MIMEText(body, 'plain'))
-        
-        # Send email
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(sender_email, sender_password)
-        text = msg.as_string()
-        server.sendmail(sender_email, recipient_email, text)
-        server.quit()
-        
-        logger.info(f" Patient information sent to {recipient_email}")
-        return True
-        
-    except Exception as e:
-        logger.error(f" Failed to send email: {e}")
-        return False
-
-
-async def send_appointment_confirmation_email(patient_data: dict, appointment: dict):
     """Send appointment confirmation email to all specified recipients"""
     try:
         # Email configuration
@@ -192,18 +128,16 @@ async def send_appointment_confirmation_email(patient_data: dict, appointment: d
         msg['To'] = ", ".join(recipients)
         msg['Subject'] = f"Appointment Confirmation - {patient_data.get('name', 'Unknown')}"
         
-        # Simple appointment confirmation
+        # Get appointment info
+        appointment = patient_data.get('appointment', {})
+        
+        # Simple appointment confirmation - ONLY date, time, and doctor
         body = f"""
 Appointment Confirmation
 
-Patient: {patient_data.get('name', 'Not provided')}
-
-Appointment Details:
-Date: {appointment.get('date', 'Not provided')}
-Time: {appointment.get('time', 'Not provided')}
-Provider: {appointment.get('doctor', 'Not provided')}
-
-Confirmation sent: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Appointment Date: {appointment.get('date', 'Not provided')}
+Appointment Time: {appointment.get('time', 'Not provided')}
+Doctor: {appointment.get('doctor', 'Not provided')}
         """
         
         msg.attach(MIMEText(body, 'plain'))
@@ -222,6 +156,7 @@ Confirmation sent: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
     except Exception as e:
         logger.error(f"Failed to send appointment confirmation email: {e}")
         return False
+
 
 
 # Define AI-callable tools using function decorators
