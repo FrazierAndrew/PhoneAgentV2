@@ -110,16 +110,9 @@ async def send_patient_info_email(patient_data: dict):
         sender_email = "bubbaf18@gmail.com"
         sender_password = "qirv tzjb tuyd bymv"  # App password
         
-        # All recipients
+        # Testing with single recipient first
         recipients = [
-            "bubbaf18@gmail.com",
-            "aelsaied@assorthealth.com",
-            "connor@assorthealth.com",
-            "cole@assorthealth.com",
-            "jciminelli@assorthealth.com",
-            "drajan@assorthealth.com",
-            "nvilimek@assorthealth.com",
-            "gwong@assorthealth.com"
+            "bubbaf18@gmail.com"
         ]
         
         # Create message
